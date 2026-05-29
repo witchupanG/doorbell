@@ -1,5 +1,5 @@
 // Service worker — cache เปลือกแอปให้เปิดได้ไว/ออฟไลน์ (ส่วนการยิงไป ntfy ผ่านเน็ตเสมอ)
-const CACHE = "doorbell-v1";
+const CACHE = "doorbell-v2";
 const ASSETS = ["./", "./index.html", "./manifest.json", "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", e => {

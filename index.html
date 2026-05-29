@@ -32,6 +32,9 @@
           background: rgba(0,0,0,.55); border: 1px solid #555; color: #fff; font-size: 15px; cursor: pointer;
           padding: 0 14px; user-select: none; -webkit-user-select: none; touch-action: none; }
   #talk.rec { background: #e53935; border-color: #e53935; }
+  #incoming { position: absolute; top: 10px; left: 10px; max-width: 45%; max-height: 45%;
+              border-radius: 10px; border: 2px solid #fff; display: none; z-index: 3;
+              box-shadow: 0 4px 14px rgba(0,0,0,.6); }
   #toast { position: absolute; top: 14px; left: 50%; transform: translateX(-50%);
            background: rgba(0,0,0,.8); padding: 8px 16px; border-radius: 20px; font-size: 14px;
            opacity: 0; transition: opacity .25s; pointer-events: none; white-space: nowrap; }
@@ -56,6 +59,7 @@
 
 <div id="wrap">
   <video id="cam" autoplay playsinline muted></video>
+  <img id="incoming" alt="">
   <button id="flip" title="สลับกล้อง">🔄</button>
   <button id="talk" title="กดค้างเพื่อพูด">🎤 พูด</button>
   <button id="ring">กดกริ่ง</button>
@@ -92,6 +96,7 @@
 const $ = id => document.getElementById(id);
 // header ของ fetch รับได้แค่ Latin-1 — แปลงข้อความไทยเป็น UTF-8 bytes ก่อน (ntfy ถอดกลับเป็นไทยเอง)
 const utf8h = s => Array.from(new TextEncoder().encode(s), b => String.fromCharCode(b)).join("");
+const sentIds = new Set();   // id ของข้อความที่เราส่งเอง (ไว้ข้ามตอนรับ ไม่เล่นเสียงตัวเอง)
 const cfg = JSON.parse(localStorage.getItem("doorbell") || "{}");
 let facing = cfg.facing || "user";   // user = กล้องหน้า, environment = กล้องหลัง
 let stream = null;
@@ -135,6 +140,7 @@ $("save").onclick = () => {
   localStorage.setItem("doorbell", JSON.stringify(c));
   $("settings").classList.remove("show");
   toast("บันทึกแล้ว");
+  startListen();   // ต่อ/ต่อใหม่ ตาม topic ที่เพิ่งตั้ง
 };
 
 function grabPhoto() {
@@ -162,6 +168,7 @@ $("ring").onclick = async () => {
       body: blob
     });
     if (!res.ok) throw new Error("HTTP " + res.status);
+    try { const j = await res.json(); if (j && j.id) sentIds.add(j.id); } catch (_) {}
     toast("ส่งแล้ว ✓ (เครื่อง B ควรดังแล้ว)");
   } catch (e) {
     toast("ส่งไม่สำเร็จ: " + e.message, 4000);
@@ -216,6 +223,7 @@ async function sendVoice(c, mime) {
       body: blob
     });
     if (!res.ok) throw new Error("HTTP " + res.status);
+    try { const j = await res.json(); if (j && j.id) sentIds.add(j.id); } catch (_) {}
     toast("ส่งเสียงแล้ว ✓");
   } catch (e) {
     toast("ส่งเสียงไม่สำเร็จ: " + e.message, 4000);
@@ -228,12 +236,43 @@ talkBtn.addEventListener("pointerleave", stopTalk);
 talkBtn.addEventListener("pointercancel", stopTalk);
 talkBtn.addEventListener("contextmenu", e => e.preventDefault());
 
+// ---------- listen mode (รับเสียง/รูปอัตโนมัติ → สองทาง) ----------
+let es = null;
+function startListen() {
+  const c = JSON.parse(localStorage.getItem("doorbell") || "{}");
+  if (!c.topic) return;
+  if (es) es.close();
+  const base = c.server || "https://ntfy.sh";
+  es = new EventSource(`${base}/${c.topic}/sse`);
+  es.onmessage = ev => {
+    let m; try { m = JSON.parse(ev.data); } catch (_) { return; }
+    if (m.event !== "message") return;
+    if (m.id && sentIds.has(m.id)) return;            // ข้ามของที่เราส่งเอง
+    const at = m.attachment;
+    if (at && at.url) {
+      const type = at.type || "", name = at.name || "";
+      if (type.startsWith("audio") || /\.(m4a|webm|ogg|mp3|aac|opus)$/i.test(name)) {
+        new Audio(at.url).play().catch(() => toast("แตะหน้าจอ 1 ครั้งเพื่อเปิดเสียง", 3500));
+        toast("🔊 มีเสียงเข้ามา");
+      } else if (type.startsWith("image")) {
+        const img = $("incoming"); img.src = at.url; img.style.display = "block";
+        clearTimeout(img._t); img._t = setTimeout(() => { img.style.display = "none"; }, 8000);
+        toast("📷 มีรูปเข้ามา");
+      }
+    } else if (m.message) {
+      toast("💬 " + m.message, 3500);
+    }
+  };
+  es.onerror = () => {};   // EventSource reconnect ให้เอง
+}
+
 // ---------- PWA: ลงทะเบียน service worker ----------
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("sw.js").catch(() => {});
 }
 
 startCamera();
+startListen();
 </script>
 </body>
 </html>
