@@ -4,6 +4,13 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>กริ่งประตู (เครื่อง A)</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#111111">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" href="icon-192.png">
 <style>
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   body { margin: 0; font-family: system-ui, "Segoe UI", sans-serif; background: #111; color: #eee;
@@ -21,6 +28,10 @@
   #ring:disabled { background: #777; }
   #flip { position: absolute; right: 16px; bottom: 60px; width: 52px; height: 52px; border-radius: 50%;
           background: rgba(0,0,0,.55); border: 1px solid #555; color: #fff; font-size: 22px; cursor: pointer; }
+  #talk { position: absolute; left: 16px; bottom: 60px; min-width: 96px; height: 52px; border-radius: 26px;
+          background: rgba(0,0,0,.55); border: 1px solid #555; color: #fff; font-size: 15px; cursor: pointer;
+          padding: 0 14px; user-select: none; -webkit-user-select: none; touch-action: none; }
+  #talk.rec { background: #e53935; border-color: #e53935; }
   #toast { position: absolute; top: 14px; left: 50%; transform: translateX(-50%);
            background: rgba(0,0,0,.8); padding: 8px 16px; border-radius: 20px; font-size: 14px;
            opacity: 0; transition: opacity .25s; pointer-events: none; white-space: nowrap; }
@@ -46,6 +57,7 @@
 <div id="wrap">
   <video id="cam" autoplay playsinline muted></video>
   <button id="flip" title="สลับกล้อง">🔄</button>
+  <button id="talk" title="กดค้างเพื่อพูด">🎤 พูด</button>
   <button id="ring">กดกริ่ง</button>
   <div id="toast"></div>
 </div>
@@ -157,6 +169,69 @@ $("ring").onclick = async () => {
     btn.disabled = false; btn.textContent = "กดกริ่ง";
   }
 };
+
+// ---------- push to talk (อัดคลิปเสียงส่งไป ntfy) ----------
+let recorder = null, chunks = [], audioStream = null, recording = false;
+function pickMime() {
+  for (const t of ["audio/mp4", "audio/webm;codecs=opus", "audio/webm"])
+    if (window.MediaRecorder && MediaRecorder.isTypeSupported(t)) return t;
+  return "";
+}
+async function startTalk() {
+  if (recording) return;
+  const c = JSON.parse(localStorage.getItem("doorbell") || "{}");
+  if (!c.topic) { toast("ยังไม่ได้ตั้ง Topic — กด ⚙️ ก่อน", 3000); return; }
+  try {
+    audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (e) { toast("เปิดไมค์ไม่ได้: " + e.message, 4000); return; }
+  const mime = pickMime(); chunks = [];
+  recorder = new MediaRecorder(audioStream, mime ? { mimeType: mime } : undefined);
+  recorder.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
+  recorder.onstop = () => sendVoice(c, recorder.mimeType || mime);
+  recorder.start(); recording = true;
+  $("talk").classList.add("rec"); $("talk").textContent = "🔴 อัด…";
+}
+function stopTalk() {
+  if (!recording) return;
+  recording = false;
+  $("talk").classList.remove("rec"); $("talk").textContent = "🎤 พูด";
+  try { recorder.stop(); } catch (_) {}
+}
+async function sendVoice(c, mime) {
+  if (audioStream) { audioStream.getTracks().forEach(t => t.stop()); audioStream = null; }
+  if (!chunks.length) return;
+  const blob = new Blob(chunks, { type: mime || "audio/webm" });
+  if (blob.size < 800) { toast("สั้นไป กดค้างนานขึ้นหน่อย"); return; }
+  const ext = (mime && mime.includes("mp4")) ? "m4a" : "webm";
+  $("talk").disabled = true;
+  try {
+    const res = await fetch(`${c.server || "https://ntfy.sh"}/${c.topic}`, {
+      method: "PUT",
+      headers: {
+        "Title": utf8h("เสียงจากหน้าประตู"),
+        "Priority": c.priority || "high",
+        "Tags": "speaking_head",
+        "Filename": "voice." + ext
+      },
+      body: blob
+    });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    toast("ส่งเสียงแล้ว ✓");
+  } catch (e) {
+    toast("ส่งเสียงไม่สำเร็จ: " + e.message, 4000);
+  } finally { $("talk").disabled = false; }
+}
+const talkBtn = $("talk");
+talkBtn.addEventListener("pointerdown", e => { e.preventDefault(); startTalk(); });
+talkBtn.addEventListener("pointerup", e => { e.preventDefault(); stopTalk(); });
+talkBtn.addEventListener("pointerleave", stopTalk);
+talkBtn.addEventListener("pointercancel", stopTalk);
+talkBtn.addEventListener("contextmenu", e => e.preventDefault());
+
+// ---------- PWA: ลงทะเบียน service worker ----------
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("sw.js").catch(() => {});
+}
 
 startCamera();
 </script>
