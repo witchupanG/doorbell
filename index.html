@@ -98,8 +98,9 @@ const $ = id => document.getElementById(id);
 // header ของ fetch รับได้แค่ Latin-1 — แปลงข้อความไทยเป็น UTF-8 bytes ก่อน (ntfy ถอดกลับเป็นไทยเอง)
 const utf8h = s => Array.from(new TextEncoder().encode(s), b => String.fromCharCode(b)).join("");
 const sentIds = new Set();   // id ของข้อความที่เราส่งเอง (ไว้ข้ามตอนรับ ไม่เล่นเสียงตัวเอง)
-const APP_VERSION = "v4";
+const APP_VERSION = "v5";
 $("ver").textContent = APP_VERSION;
+const APP_URL = location.origin + location.pathname;   // ลิงก์เปิด PWA นี้ (แนบใน noti)
 const cfg = JSON.parse(localStorage.getItem("doorbell") || "{}");
 let facing = cfg.facing || "user";   // user = กล้องหน้า, environment = กล้องหลัง
 let stream = null;
@@ -166,6 +167,7 @@ $("ring").onclick = async () => {
         "Title": utf8h(c.title || "มีคนกดกริ่งหน้าประตู"),
         "Priority": c.priority || "high",
         "Tags": "bell",
+        "Click": APP_URL,
         "Filename": "door.jpg"
       },
       body: blob
@@ -219,8 +221,9 @@ async function sendVoice(c, mime) {
       method: "PUT",
       headers: {
         "Title": utf8h("เสียงจากหน้าประตู"),
-        "Priority": c.priority || "high",
+        "Priority": "min",   // เงียบในแอป ntfy (กันดังซ้อน) — หน้า PWA ที่เปิดอยู่เล่นเสียงเอง
         "Tags": "speaking_head",
+        "Click": APP_URL,
         "Filename": "voice." + ext
       },
       body: blob
