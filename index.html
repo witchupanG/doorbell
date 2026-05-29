@@ -98,7 +98,7 @@ const $ = id => document.getElementById(id);
 // header ของ fetch รับได้แค่ Latin-1 — แปลงข้อความไทยเป็น UTF-8 bytes ก่อน (ntfy ถอดกลับเป็นไทยเอง)
 const utf8h = s => Array.from(new TextEncoder().encode(s), b => String.fromCharCode(b)).join("");
 const sentIds = new Set();   // id ของข้อความที่เราส่งเอง (ไว้ข้ามตอนรับ ไม่เล่นเสียงตัวเอง)
-const APP_VERSION = "v3";
+const APP_VERSION = "v4";
 $("ver").textContent = APP_VERSION;
 const cfg = JSON.parse(localStorage.getItem("doorbell") || "{}");
 let facing = cfg.facing || "user";   // user = กล้องหน้า, environment = กล้องหลัง
