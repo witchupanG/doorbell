@@ -78,6 +78,8 @@
 <canvas id="cv" hidden></canvas>
 <script>
 const $ = id => document.getElementById(id);
+// header ของ fetch รับได้แค่ Latin-1 — แปลงข้อความไทยเป็น UTF-8 bytes ก่อน (ntfy ถอดกลับเป็นไทยเอง)
+const utf8h = s => Array.from(new TextEncoder().encode(s), b => String.fromCharCode(b)).join("");
 const cfg = JSON.parse(localStorage.getItem("doorbell") || "{}");
 let facing = cfg.facing || "user";   // user = กล้องหน้า, environment = กล้องหลัง
 let stream = null;
@@ -140,7 +142,7 @@ $("ring").onclick = async () => {
     const res = await fetch(`${c.server || "https://ntfy.sh"}/${c.topic}`, {
       method: "PUT",
       headers: {
-        "Title": c.title || "มีคนกดกริ่งหน้าประตู",
+        "Title": utf8h(c.title || "มีคนกดกริ่งหน้าประตู"),
         "Priority": c.priority || "high",
         "Tags": "bell",
         "Filename": "door.jpg"
