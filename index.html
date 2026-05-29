@@ -98,7 +98,7 @@ const $ = id => document.getElementById(id);
 // header ของ fetch รับได้แค่ Latin-1 — แปลงข้อความไทยเป็น UTF-8 bytes ก่อน (ntfy ถอดกลับเป็นไทยเอง)
 const utf8h = s => Array.from(new TextEncoder().encode(s), b => String.fromCharCode(b)).join("");
 const sentIds = new Set();   // id ของข้อความที่เราส่งเอง (ไว้ข้ามตอนรับ ไม่เล่นเสียงตัวเอง)
-const APP_VERSION = "v6";
+const APP_VERSION = "v7";
 $("ver").textContent = APP_VERSION;
 const APP_URL = location.origin + location.pathname;   // ลิงก์เปิด PWA นี้ (แนบใน noti)
 // id เฉพาะเครื่องนี้ — ฝังไปกับข้อความ ไว้กันเล่นเสียงตัวเอง (echo) แบบไม่ต้องพึ่งจังหวะ response
@@ -245,6 +245,41 @@ talkBtn.addEventListener("pointerleave", stopTalk);
 talkBtn.addEventListener("pointercancel", stopTalk);
 talkBtn.addEventListener("contextmenu", e => e.preventDefault());
 
+// ---------- เสียงกริ่ง + desktop notification (เผื่อ B เป็น PC หรือเปิดเว็บค้าง) ----------
+let actx = null;
+function enableAlerts() {   // ขอสิทธิ์แจ้งเตือน + ปลดล็อกเสียง ตอนแตะจอครั้งแรก
+  if ("Notification" in window && Notification.permission === "default") Notification.requestPermission();
+  try { actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+        if (actx.state === "suspended") actx.resume(); } catch (_) {}
+}
+document.addEventListener("pointerdown", enableAlerts, { once: true });
+
+function ringSound() {   // ding-dong วนทุก 1 วิ ~6 วิ
+  try {
+    if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
+    if (actx.state === "suspended") actx.resume();
+    const now = actx.currentTime;
+    for (let k = 0; k < 6; k++) {
+      [[k, 880], [k + 0.35, 660]].forEach(([dt, f]) => {
+        const t = now + dt, o = actx.createOscillator(), g = actx.createGain();
+        o.type = "sine"; o.frequency.value = f; o.connect(g); g.connect(actx.destination);
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(0.5, t + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.32);
+        o.start(t); o.stop(t + 0.34);
+      });
+    }
+  } catch (_) {}
+}
+function notify(title, body, img) {
+  if (!("Notification" in window) || Notification.permission !== "granted") return;
+  try {
+    const n = new Notification(title || "🔔 กริ่งประตู",
+      { body: body || "", icon: "icon-192.png", image: img, tag: "doorbell", renotify: true });
+    n.onclick = () => { window.focus(); n.close(); };
+  } catch (_) {}
+}
+
 // ---------- listen mode (รับเสียง/รูปอัตโนมัติ → สองทาง) ----------
 let es = null;
 function startListen() {
@@ -268,7 +303,9 @@ function startListen() {
       } else if (type.startsWith("image")) {
         const img = $("incoming"); img.src = at.url; img.style.display = "block";
         clearTimeout(img._t); img._t = setTimeout(() => { img.style.display = "none"; }, 8000);
-        toast("📷 มีรูปเข้ามา");
+        ringSound();
+        notify(m.title, "มีคนกดกริ่งหน้าประตู", at.url);
+        toast("🔔 มีคนกดกริ่ง");
       }
     } else if (m.message) {
       toast("💬 " + m.message, 3500);
