@@ -98,9 +98,12 @@ const $ = id => document.getElementById(id);
 // header ของ fetch รับได้แค่ Latin-1 — แปลงข้อความไทยเป็น UTF-8 bytes ก่อน (ntfy ถอดกลับเป็นไทยเอง)
 const utf8h = s => Array.from(new TextEncoder().encode(s), b => String.fromCharCode(b)).join("");
 const sentIds = new Set();   // id ของข้อความที่เราส่งเอง (ไว้ข้ามตอนรับ ไม่เล่นเสียงตัวเอง)
-const APP_VERSION = "v5";
+const APP_VERSION = "v6";
 $("ver").textContent = APP_VERSION;
 const APP_URL = location.origin + location.pathname;   // ลิงก์เปิด PWA นี้ (แนบใน noti)
+// id เฉพาะเครื่องนี้ — ฝังไปกับข้อความ ไว้กันเล่นเสียงตัวเอง (echo) แบบไม่ต้องพึ่งจังหวะ response
+const CLIENT_ID = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : Math.random().toString(36).slice(2);
+const CLICK_URL = APP_URL + "?from=" + CLIENT_ID;
 const cfg = JSON.parse(localStorage.getItem("doorbell") || "{}");
 let facing = cfg.facing || "user";   // user = กล้องหน้า, environment = กล้องหลัง
 let stream = null;
@@ -167,7 +170,7 @@ $("ring").onclick = async () => {
         "Title": utf8h(c.title || "มีคนกดกริ่งหน้าประตู"),
         "Priority": c.priority || "high",
         "Tags": "bell",
-        "Click": APP_URL,
+        "Click": CLICK_URL,
         "Filename": "door.jpg"
       },
       body: blob
@@ -223,7 +226,7 @@ async function sendVoice(c, mime) {
         "Title": utf8h("เสียงจากหน้าประตู"),
         "Priority": "min",   // เงียบในแอป ntfy (กันดังซ้อน) — หน้า PWA ที่เปิดอยู่เล่นเสียงเอง
         "Tags": "speaking_head",
-        "Click": APP_URL,
+        "Click": CLICK_URL,
         "Filename": "voice." + ext
       },
       body: blob
@@ -253,7 +256,9 @@ function startListen() {
   es.onmessage = ev => {
     let m; try { m = JSON.parse(ev.data); } catch (_) { return; }
     if (m.event !== "message") return;
-    if (m.id && sentIds.has(m.id)) return;            // ข้ามของที่เราส่งเอง
+    // ข้ามของที่เราส่งเอง (เช็กจาก client-id ที่ฝังใน click — แน่นอน ไม่ขึ้นกับจังหวะ)
+    try { if (m.click && new URL(m.click).searchParams.get("from") === CLIENT_ID) return; } catch (_) {}
+    if (m.id && sentIds.has(m.id)) return;
     const at = m.attachment;
     if (at && at.url) {
       const type = at.type || "", name = at.name || "";

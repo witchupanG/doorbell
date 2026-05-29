@@ -1,6 +1,6 @@
 // Service worker — กันค้างเวอร์ชันเก่า: หน้า HTML ดึงจากเน็ตก่อนเสมอ (network-first)
 // ส่วนไอคอน/ไฟล์ static ใช้ cache-first และการยิงไป ntfy ปล่อยผ่านเน็ตตรงๆ
-const CACHE = "doorbell-v5";
+const CACHE = "doorbell-v6";
 const ASSETS = ["./", "./index.html", "./manifest.json", "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", e => {
